@@ -3,6 +3,7 @@
 ## Streamlit
 #### Installer Streamlit
 Aller dans le chemin : ...\Swap-Pricing-Project-
+
 Entrer la commande : pip install streamlit
 
 #### Lancer Streamlit
