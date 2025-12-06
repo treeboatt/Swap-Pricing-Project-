@@ -108,3 +108,5 @@ if __name__ == "__main__":
         plt.show()
     except ImportError:
         print("Matplotlib non installé, pas de graphe généré.")
+
+# Construction et interpolation des courbes

@@ -1,0 +1,1 @@
+# Modèle HW1F (pour callable/puttable)
