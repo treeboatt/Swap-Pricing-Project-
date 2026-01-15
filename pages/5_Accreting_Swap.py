@@ -18,4 +18,9 @@ st.subheader("Évolution du Notionnel (Accretion)")
 st.line_chart(pd.DataFrame(notionals, columns=["Notionnel"]))
 
 if st.button("Calculer la NPV"):
-    st.success("NPV calculée avec succès")
+    floating_rates = np.full(steps, 0.035)
+    discount_factors = np.exp(-0.03 * np.arange(steps))
+    periods = np.full(steps, 1/1)
+    
+    npv = price_accreting_swap(notionals, fixed_r, floating_rates, periods, discount_factors)
+    st.success(f"NPV calculée avec succès : {npv:,.2f} EUR")
