@@ -74,7 +74,7 @@ class CallableSwapPricer:
         n = len(self.times)
         values = []
 
-        # ===== condition terminale =====
+        # condition finale
         dt_last = year_fraction(self.times[-2], self.times[-1])
 
         last_values = []
