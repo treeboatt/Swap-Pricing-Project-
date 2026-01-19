@@ -1,61 +1,6 @@
 from core.curves import ZeroCouponCurve
-
-
-"""
-################################
-    # Données générales
-    ################################
-    N = 1_000_000 # Notionel
-    T0 = 0 # Date de début
-    Tn = 5 # Date de fin
-    f = 4 # Frequence des paiements par an
-    dt_pay = 1 / f # Intervalle entre paiements
-    day_count = "ACT/360" # convention de calcul des fractions annuelles
-
-    ################################
-    # Discount curve
-    ################################
-
-    # Quotes de marché OIS (exemple)
-    ois_market_quotes = {
-        1.0: 0.030,
-        2.0: 0.032,
-        3.0: 0.034,
-        5.0: 0.038,
-        10.0: 0.040
-    }
-
-    # Construction de la courbe OIS par bootstrapping (0 coupons)
-    discount_curve = ZeroCouponCurve.bootstrap_ois_curve(
-        ois_market_quotes,
-        curve_name="EUR-OIS"
-    )
-
-    ################################
-    # Projection curve
-    ################################
-
-    # Zéros IBOR fictifs (exemple pédagogique)
-    ibor_times = [0.0, 1.0, 2.0, 3.0, 5.0, 10.0]
-    ibor_zero_rates = [0.031, 0.033, 0.035, 0.037, 0.039, 0.041]
-
-    # Construction de la courbe IBOR
-    projection_curve = ZeroCouponCurve(
-        ibor_times,
-        ibor_zero_rates,
-        curve_name="EUR-IBOR-3M"
-    )
-
-    ################################
-    # Jambe range accrual
-    ################################
-    c = 0.05 # Coupon promis
-    lower_bound = 0.02 # bornes inf du range
-    upper_bound = 0.04 # bornes sup du range
-    
-"""
-
-
+from core.hull_white import HullWhiteModel
+import numpy as np
 
 class RangeAccrualSwapPricer:
     def __init__(
@@ -67,7 +12,10 @@ class RangeAccrualSwapPricer:
         lower_bound: float,
         upper_bound: float,
         discount_curve: ZeroCouponCurve,
-        projection_curve: ZeroCouponCurve
+        projection_curve: ZeroCouponCurve,
+        hw_model,
+        n_paths=10000,
+        seed=42
     ):
         self.N = notional
         self.T0 = 0.0
@@ -77,9 +25,50 @@ class RangeAccrualSwapPricer:
         self.c = coupon
         self.lower = lower_bound
         self.upper = upper_bound
-
         self.discount_curve = discount_curve
         self.projection_curve = projection_curve
+        self.hw_model = hw_model
+        self.n_paths = n_paths
+        self.seed = seed
+
+    # Simulation Ornstein-Uhlenbeck des x(t)
+    def simulate_x_paths(self, obs_grid):
+        rng = np.random.default_rng(self.seed)
+        n_times = len(obs_grid)
+        x = np.zeros((self.n_paths, n_times))
+
+        a = self.hw_model.a
+        sigma = self.hw_model.sigma
+
+        for j in range(1, n_times):
+            dt = obs_grid[j] - obs_grid[j - 1]
+            z = rng.normal(size=self.n_paths)
+
+            # schéma exact OU
+            x[:, j] = (
+                x[:, j - 1] * np.exp(-a * dt)
+                + sigma * np.sqrt((1 - np.exp(-2 * a * dt)) / (2 * a)) * z
+            )
+
+        return x
+    
+    def bond_price_hw(self, t, T, x_t):
+        P0T = self.projection_curve.get_discount_factor(T)
+        P0t = self.projection_curve.get_discount_factor(t)
+
+        B = self.hw_model.calc_b(t, T)
+        var = self.hw_model.calc_variance(t)
+
+        return (
+            P0T / P0t
+            * np.exp(-B * x_t - 0.5 * B * B * var)
+        )
+    
+    def forward_ibor_hw(self, t, delta, x_t):
+        P = self.bond_price_hw(t, t + delta, x_t)
+        P = np.maximum(P, 1e-12)
+        return (1.0 / P - 1.0) / delta
+
 
     # On crée une liste des dates de paiement
     def create_payment_times(self):
@@ -115,21 +104,26 @@ class RangeAccrualSwapPricer:
         return self.dt_pay # supposons que le tenor IBOR est égal à la fréquence de paiement
 
     # Ai represent le pourcentage de temps passé dans l'intervalle [lower_bound, upper_bound] pour la période i
-    def Ai_computation(self):
+    # On transforme en montcarlo
+    def Ai_computation_mc(self, obs_grid, x_paths):
         Ai_list = []
+        delta = self.get_tenor_ibor()
+
+        time_index = {round(t,10): i for i,t in enumerate(obs_grid)}
 
         for obs_times_i in self.observation_times:
-            count_in_range = 0
-            total_obs = len(obs_times_i)
+            indices = [time_index[round(t,10)] for t in obs_times_i]
 
-            for t in obs_times_i:
-                forward_rate_t = self.projection_curve.get_forward_rate(t, t + self.get_tenor_ibor())
-                if self.lower <= forward_rate_t <= self.upper:
-                    count_in_range += 1
+            x_i = x_paths[:, indices]  # (n_paths, n_obs)
+            in_range = np.zeros_like(x_i, dtype=bool)
 
-            # fraction de temps passé dans l'intervalle
-            Ai = count_in_range / total_obs if total_obs > 0 else 0.0
-            Ai_list.append(Ai)
+            for k, t in enumerate(obs_times_i):
+                L = self.forward_ibor_hw(t, delta, x_i[:, k])
+                in_range[:, k] = (L >= self.lower) & (L <= self.upper)
+
+            # moyenne temps puis Monte Carlo
+            Ai = in_range.mean(axis=1).mean()
+            Ai_list.append(float(Ai))
 
         return Ai_list
 
@@ -168,7 +162,11 @@ class RangeAccrualSwapPricer:
         self.observation_times = self.create_observation_times()
 
         # Calcul des Ai (fractions in-range)
-        self.Ai_list = self.Ai_computation()
+        obs_grid = sorted(
+            {round(t,10) for period in self.observation_times for t in period}
+        )
+        x_paths = self.simulate_x_paths(obs_grid)
+        self.Ai_list = self.Ai_computation_mc(obs_grid, x_paths)
 
         # Cashflows
         self.cashflows = self.compute_cashflows()

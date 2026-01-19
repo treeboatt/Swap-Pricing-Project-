@@ -1,5 +1,6 @@
 import streamlit as st
 
+from core.hull_white import HullWhiteModel
 from pricers.range_accrual_swap import RangeAccrualSwapPricer
 from core.curves import ZeroCouponCurve
 from core.market_data import get_mock_ois_quotes, get_mock_ibor_quotes
@@ -88,21 +89,61 @@ with col3:
     upper_bound = st.number_input("Borne haute", value=0.04, step=0.001, format="%.4f")
 
 ################################
+# Paramètres Hull–White
+################################
+st.header("Modèle de taux – Hull–White (1 facteur)")
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    a = st.number_input(
+        "Vitesse de retour a",
+        value=0.03,
+        step=0.005,
+        format="%.4f"
+    )
+
+with col2:
+    sigma = st.number_input(
+        "Volatilité sigma",
+        value=0.01,
+        step=0.001,
+        format="%.4f"
+    )
+
+with col3:
+    n_paths = st.number_input(
+        "Nombre de scénarios Monte Carlo",
+        value=10_000,
+        step=1_000
+    )
+
+
+################################
 # Pricing
 ################################
 st.header("Pricing")
 
 if st.button("Pricer le Range Accrual Swap"):
-    pricer = RangeAccrualSwapPricer(
-        notional=notional,
-        maturity=maturity,
-        payment_freq=payment_freq,
-        coupon=coupon,
-        lower_bound=lower_bound,
-        upper_bound=upper_bound,
-        discount_curve=ois_curve,
-        projection_curve=projection_curve
+    hw_model = HullWhiteModel(
+        a=a,
+        sigma=sigma
     )
+
+    pricer = RangeAccrualSwapPricer(
+    notional=notional,
+    maturity=maturity,
+    payment_freq=payment_freq,
+    coupon=coupon,
+    lower_bound=lower_bound,
+    upper_bound=upper_bound,
+    discount_curve=ois_curve,
+    projection_curve=projection_curve,
+    hw_model=hw_model,
+    n_paths=int(n_paths),
+    seed=42
+    )
+
 
     pv = pricer.price_range_accrual()
 
