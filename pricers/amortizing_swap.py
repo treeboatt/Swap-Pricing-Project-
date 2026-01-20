@@ -142,8 +142,6 @@ class AmortizingSwapPricer:
             df = self.discount_factor(t_mid)
             pv_floating += floating_cf * df
         
-        # Calcul du taux fixe qui équilibre: sum(fixed_cf * df) = pv_floating
-        # fixed_cf = N_i * K * dt  →  K = pv_floating / sum(N_i * dt * df)
         denominator = 0.0
         for period_idx in range(len(self.notional_schedule)):
             t1 = self.times[period_idx]

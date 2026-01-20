@@ -123,8 +123,7 @@ class BasisSwapPricer:
             df = self.discount_factor(t_mid)
             pv_leg1 += cf1 * df
         
-        # Calcul du spread: sum(leg1 * df) = sum((leg2 + spread) * df)
-        # spread = [pv_leg1 - sum(leg2_sans_spread * df)] / [sum(notional * dt * df)]
+
         denominator = 0.0
         pv_leg2_base = 0.0
         
