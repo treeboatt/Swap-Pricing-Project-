@@ -74,7 +74,7 @@ class CallableSwapPricer:
         n = len(self.times)
         values = []
 
-        # ===== condition terminale =====
+        #condition finale
         dt_last = year_fraction(self.times[-2], self.times[-1])
 
         last_values = []
@@ -85,7 +85,7 @@ class CallableSwapPricer:
 
         values.append(last_values)
 
-        # ===== backward induction =====
+        #backward induction
         for i in reversed(range(n - 1)):
             t = self.times[i]
             dt = year_fraction(t, self.times[i + 1])
