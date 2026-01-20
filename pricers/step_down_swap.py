@@ -12,15 +12,14 @@ class StepDownPricer:
     ):
         self.N = notional
         self.times = payment_times
-        self.rates = fixed_rates 
+        self.fixed_rates = fixed_rates 
         self.curve = discount_curve
-
-        assert len(self.times) - 1 == len(self.rates)
+        assert len(self.times) - 1 == len(self.fixed_rates)
 
     def fixed_leg(self, i: int) -> float:
         t1, t2 = self.times[i], self.times[i+1]
         dt = year_fraction(t1, t2)
-        return self.N * self.rates[i] * dt
+        return self.N * self.fixed_rates[i] * dt
     
     def floating_leg(self, i: int) -> float :
         t1, t2 = self.times[i], self.times[i+1]
@@ -30,13 +29,8 @@ class StepDownPricer:
     
     def price(self) -> float:
         pv = 0.0
-
         for i in range(len(self.fixed_rates)):
             t_pay = self.times[i+1]
-            cf_fixed = self.fixed_leg(i)
-            cf_float = self.floating_leg(i)
             df = self.curve.get_discount_factor(t_pay)
-            pv+=df*(cf_fixed - cf_float)
-            
+            pv += df * (self.floating_leg(i) - self.fixed_leg(i))
         return pv
-
