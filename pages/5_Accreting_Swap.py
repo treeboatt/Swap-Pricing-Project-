@@ -4,7 +4,7 @@ import pandas as pd
 from pricers.accreting_swap import price_accreting_swap
 
 st.set_page_config(page_title="Accreting Swap")
-st.title("📈 Accreting Swap Pricing")
+st.title("Accreting Swap Pricing")
 
 st.sidebar.header("Paramètres")
 n0 = st.sidebar.number_input("Notionnel Initial", value=1000000)

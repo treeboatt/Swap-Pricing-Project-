@@ -4,7 +4,7 @@ import pandas as pd
 from pricers.mtm_swap import price_mtm_swap
 
 st.set_page_config(page_title="MtM Swap")
-st.title("🔄 Mark-to-Market Swap Pricing")
+st.title("Mark-to-Market Swap Pricing")
 
 st.sidebar.header("Paramètres du Marché")
 base_n = st.sidebar.number_input("Notionnel de base (EUR)", value=1000000)
