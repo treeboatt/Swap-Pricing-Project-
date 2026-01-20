@@ -1,26 +1,29 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-from pricers.accreting_swap import price_accreting_swap
+from core.curves import ZeroCouponCurve
+from core.market_data import get_mock_ois_quotes
+from pricers.accreting_swap import AccretingSwapPricer
 
-st.set_page_config(page_title="Accreting Swap")
+st.set_page_config(page_title="Accreting Swap", layout="wide")
 st.title("Accreting Swap Pricing")
 
+quotes = get_mock_ois_quotes()
+ois_curve = ZeroCouponCurve.bootstrap_ois_curve(quotes)
+
 st.sidebar.header("Paramètres")
-n0 = st.sidebar.number_input("Notionnel Initial", value=1000000)
-growth = st.sidebar.slider("Croissance périodique (%)", 0.0, 10.0, 2.5)
-fixed_r = st.sidebar.number_input("Taux Fixe", value=0.03)
+n0 = st.sidebar.number_input("Notionnel Initial", value=1_000_000.0)
+growth = st.sidebar.slider("Croissance (%)", 0.0, 10.0, 2.5)
+fixed_r = st.sidebar.number_input("Taux Fixe", value=0.03, format="%.4f")
+maturity = st.sidebar.number_input("Maturité (ans)", value=5, step=1)
 
-steps = 10
-notionals = np.array([n0 * (1 + growth/100)**i for i in range(steps)])
+payment_times = [float(i) for i in range(int(maturity) + 1)]
+notionals = [n0 * (1 + growth/100)**i for i in range(int(maturity))]
 
-st.subheader("Évolution du Notionnel (Accretion)")
+st.subheader("Calendrier du Notionnel")
 st.line_chart(pd.DataFrame(notionals, columns=["Notionnel"]))
 
 if st.button("Calculer la NPV"):
-    floating_rates = np.full(steps, 0.035)
-    discount_factors = np.exp(-0.03 * np.arange(steps))
-    periods = np.full(steps, 1/1)
-    
-    npv = price_accreting_swap(notionals, fixed_r, floating_rates, periods, discount_factors)
-    st.success(f"NPV calculée avec succès : {npv:,.2f} EUR")
+    pricer = AccretingSwapPricer(notionals, payment_times, fixed_r, ois_curve)
+    npv = pricer.price()
+    st.metric("NPV du Swap", f"{npv:,.2f} EUR")
