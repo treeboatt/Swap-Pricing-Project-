@@ -64,6 +64,7 @@ class RangeAccrualSwapPricer:
             * np.exp(-B * x_t - 0.5 * B * B * var)
         )
     
+    # InterBank Offered Rate (IBOR) utilisé pour le forward rate
     def forward_ibor_hw(self, t, delta, x_t):
         P = self.bond_price_hw(t, t + delta, x_t)
         P = np.maximum(P, 1e-12)
@@ -101,7 +102,7 @@ class RangeAccrualSwapPricer:
 
 
     def get_tenor_ibor(self):
-        return self.dt_pay # supposons que le tenor IBOR est égal à la fréquence de paiement
+        return self.dt_pay # On suppose que le tenor IBOR est égal à la fréquence de paiement
 
     # Ai represent le pourcentage de temps passé dans l'intervalle [lower_bound, upper_bound] pour la période i
     # On transforme en montcarlo
@@ -109,20 +110,33 @@ class RangeAccrualSwapPricer:
         Ai_list = []
         delta = self.get_tenor_ibor()
 
-        time_index = {round(t,10): i for i,t in enumerate(obs_grid)}
-
+        # On parcourt chaque période de paiement
         for obs_times_i in self.observation_times:
-            indices = [time_index[round(t,10)] for t in obs_times_i]
 
-            x_i = x_paths[:, indices]  # (n_paths, n_obs)
-            in_range = np.zeros_like(x_i, dtype=bool)
+            # Nombre de jours d'observation dans la période
+            n_obs = len(obs_times_i)
 
-            for k, t in enumerate(obs_times_i):
-                L = self.forward_ibor_hw(t, delta, x_i[:, k])
-                in_range[:, k] = (L >= self.lower) & (L <= self.upper)
+            # Tableau pour stocker, pour chaque scénario,nle nombre de jours où le taux est dans le range
+            count_in_range = np.zeros(self.n_paths)
 
-            # moyenne temps puis Monte Carlo
-            Ai = in_range.mean(axis=1).mean()
+            # Boucle sur les jours de la période
+            for t in obs_times_i:
+                t_key = round(t, 10) # arrondi pour éviter les problèmes de flottement
+                time_index = obs_grid.index(t_key)
+
+                x_t = x_paths[:, time_index]
+
+                L = self.forward_ibor_hw(t_key, delta, x_t)
+                in_range = (L >= self.lower) & (L <= self.upper)
+                count_in_range += in_range.astype(float)
+
+
+            # Fraction de temps dans le range pour chaque scénario
+            fraction_in_range = count_in_range / n_obs
+
+            # Moyenne Monte Carlo
+            Ai = fraction_in_range.mean()
+
             Ai_list.append(float(Ai))
 
         return Ai_list
@@ -153,7 +167,7 @@ class RangeAccrualSwapPricer:
 
     def price_range_accrual(self) -> float:
         """
-        Pricing complet d'un Range Accrual Swap (jambe range seule)
+        Pricing complet d'un Range Accrual Swap (jambe range)
         """
         # Dates de paiement
         self.payment_times = self.create_payment_times()
@@ -171,7 +185,7 @@ class RangeAccrualSwapPricer:
         # Cashflows
         self.cashflows = self.compute_cashflows()
 
-        # Actualisation OIS
+        # Actualisation OIS (Overnight Index Swap)
         pv = self.compute_present_value()
 
         return pv
