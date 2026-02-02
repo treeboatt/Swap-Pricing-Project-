@@ -1,84 +1,91 @@
 import streamlit as st
-import numpy as np
 import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+import plotly.express as px
 
+from pricers.puttable_swap_pricer import PuttableSwapPricer
 from core.curves import ZeroCouponCurve
-from core.hull_white import HullWhiteModel
 from core.market_data import get_mock_ois_quotes, get_mock_ibor_quotes
 
-st.set_page_config(page_title="Puttable Swap", layout="wide")
-st.title("Puttable Swap")
+st.set_page_config(page_title="Puttable Swap Pricing", layout="wide")
+st.title("📉 Puttable Swap - Évaluation d'Option")
 
 st.markdown("""
-Un **Puttable Swap** est un swap de taux d'intérêt où le payeur du taux fixe a le droit 
-(l'option) de mettre fin au contrat à des dates prédéfinies avant la maturité.
+Un **Puttable Swap** offre au payeur de taux fixe le droit de résilier le contrat. 
+Cette page décompose la valeur entre le swap vanille et la valeur de l'option de sortie.
 """)
 
-# --- Données de marché ---
-st.header("Données de marché")
-ois_curve = ZeroCouponCurve.bootstrap_ois_curve(get_mock_ois_quotes(), "EUR-OIS")
-ibor_quotes = get_mock_ibor_quotes()
-projection_curve = ZeroCouponCurve(list(ibor_quotes.keys()), list(ibor_quotes.values()), "EURIBOR-3M")
+# --- Sidebar : Paramètres de Marché ---
+st.sidebar.header("Market Environment")
+ois_curve = ZeroCouponCurve.bootstrap_ois_curve(get_mock_ois_quotes())
+ibor_curve = ZeroCouponCurve(list(get_mock_ibor_quotes().keys()), list(get_mock_ibor_quotes().values()))
 
-# --- Configuration du Swap ---
-st.header("Paramètres du Puttable Swap")
-col1, col2, col3 = st.columns(3)
+# --- Section 1 : Inputs ---
+st.header("1. Caractéristiques du Swap")
+c1, c2, c3 = st.columns(3)
 
-with col1:
-    notional = st.number_input("Notionnel", value=1_000_000, step=10000)
-    fixed_rate = st.number_input("Taux Fixe (Coupon)", value=0.035, format="%.4f")
+with c1:
+    notional = st.number_input("Notionnel (€)", value=1_000_000, step=50000)
+    fixed_rate = st.number_input("Taux Fixe", value=0.032, format="%.4f")
+with c2:
+    maturity = st.slider("Maturité (ans)", 1, 25, 10)
+    freq = st.selectbox("Fréquence", ["3M", "6M", "1Y"], index=1)
+with c3:
+    a = st.number_input("Hull-White 'a' (Mean Reversion)", value=0.03, format="%.3f")
+    sigma = st.number_input("Hull-White 'sigma' (Vol)", value=0.015, format="%.3f")
 
-with col2:
-    maturity = st.number_input("Maturité (années)", value=5, step=1)
-    freq_label = st.selectbox("Fréquence de paiement", ["3M", "6M", "1Y"], index=1)
+# --- Section 2 : Exécution du Pricing ---
+st.divider()
+pricer = PuttableSwapPricer(notional, maturity, fixed_rate, freq, a, sigma, ois_curve, ibor_curve)
 
-with col3:
-    a = st.number_input("Vitesse de retour (a)", value=0.03, format="%.4f")
-    sigma = st.number_input("Volatilité (sigma)", value=0.01, format="%.4f")
+if st.button("Calculer la Valeur du Puttable Swap"):
+    pv_v, opt_v, details = pricer.price()
+    df_details = pd.DataFrame(details)
 
-# --- Logique de Pricing ---
-st.header("Pricing via Hull-White")
+    # Métriques principales
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("PV Swap Vanille", f"{pv_v:,.2f} €")
+    m2.metric("Valeur Optionnelle", f"{opt_v:,.2f} €")
+    m3.metric("PV Puttable Swap", f"{(pv_v + opt_v):,.2f} €")
+    m4.metric("Option / Notional", f"{(opt_v / notional * 100):.3f} %")
 
-if st.button("Pricer le Puttable Swap"):
-    with st.spinner("Simulation des trajectoires de taux..."):
-        # Initialisation du modèle Hull-White présent dans votre dossier core
-        hw_model = HullWhiteModel(a=a, sigma=sigma)
-        
-        freq_map = {"3M": 4, "6M": 2, "1Y": 1}
-        n_payments = freq_map[freq_label]
-        times = np.linspace(1/n_payments, maturity, int(maturity * n_payments))
-        
-        # 1. Calcul de la jambe fixe et flottante (Swap Vanille)
-        pv_vanilla = 0
-        details = []
-        
-        for t in times:
-            df = ois_curve.get_discount_factor(t)
-            fwd = projection_curve.get_forward_rate(max(0, t - 1/n_payments), t)
-            
-            payoff_fixe = fixed_rate * (1/n_payments) * notional
-            payoff_float = fwd * (1/n_payments) * notional
-            
-            # On assume ici que l'utilisateur reçoit le flottant et paye le fixe
-            pv_flow = (payoff_float - payoff_fixe) * df
-            pv_vanilla += pv_flow
-            
-            details.append({"Temps": t, "DF": df, "Fwd": fwd, "PV Flux": pv_flow})
+    # --- Section 3 : Visualisation ---
+    st.header("2. Analyse Graphique")
+    col_a, col_b = st.columns(2)
 
-        # 2. Valorisation de l'option de "Put" (simplifiée ici par simulation)
-        # Un swap puttable = Swap Vanille + Option de résiliation
-        # Si le swap devient trop négatif, on l'arrête (valeur plancher à 0)
-        option_value = abs(pv_vanilla) * 0.15 # Approximation pédagogique pour la démo
-        
-        total_pv = pv_vanilla + option_value
+    with col_a:
+        st.subheader("Profil des Flux Net (Non actualisés)")
+        fig_flux = px.bar(df_details, x="Maturité", y="Flux Net", 
+                          title="Flux périodiques estimés", color="Flux Net",
+                          color_continuous_scale="RdYlGn")
+        st.plotly_chart(fig_flux, use_container_width=True)
 
-    # --- Affichage des résultats ---
-    c1, c2, c3 = st.columns(3)
-    c1.metric("PV Swap Vanille", f"{pv_vanilla:,.2f} €")
-    c2.metric("Valeur de l'Option (Put)", f"{option_value:,.2f} €")
-    c3.metric("PV Puttable Swap", f"{total_pv:,.2f} €", delta=f"{option_value:,.2f}")
+    with col_b:
+        st.subheader("Actualisation (DF) sur la période")
+        fig_df = px.line(df_details, x="Maturité", y="DF", markers=True, 
+                         title="Courbe des facteurs d'actualisation")
+        st.plotly_chart(fig_df, use_container_width=True)
 
-    st.subheader("Échéancier théorique")
-    st.dataframe(pd.DataFrame(details), use_container_width=True)
+    # --- Section 4 : Sensibilité ---
+    st.header("3. Sensibilité à la Volatilité (Hull-White)")
+    vol_range = np.linspace(0.005, 0.05, 15)
+    sensi_data = []
+    for v in vol_range:
+        _, o_v, _ = pricer.price(custom_sigma=v)
+        sensi_data.append({"Volatilité": v, "Valeur Option": o_v})
     
-    st.info("Note : Le calcul de l'option utilise les paramètres Hull-White (a et sigma) pour ajuster la valeur selon la volatilité des taux.")
+    df_sensi = pd.DataFrame(sensi_data)
+    fig_sensi = px.area(df_sensi, x="Volatilité", y="Valeur Option", 
+                        title="Impact de la volatilité sur la valeur du Put")
+    st.plotly_chart(fig_sensi, use_container_width=True)
+
+    # --- Section 5 : Tableau Détail ---
+    with st.expander("Voir l'échéancier détaillé"):
+        st.table(df_details.style.format({
+            "Maturité": "{:.2f}",
+            "DF": "{:.4f}",
+            "Forward": "{:.4%}",
+            "Flux Net": "{:,.2f} €",
+            "PV Flux": "{:,.2f} €"
+        }))
