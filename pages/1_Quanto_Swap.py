@@ -8,22 +8,19 @@ from pricers.quanto_swap_pricer import QuantoSwapPricer
 from core.curves import ZeroCouponCurve
 from core.market_data import get_mock_ois_quotes, get_mock_ibor_quotes
 
-# Configuration de la page
 st.set_page_config(page_title="Quanto Swap Pricing", layout="wide")
-st.title("💱 Quanto Swap - Analyse de Risque")
+st.title(" Quanto Swap - Analyse de Risque")
 
 st.markdown("""
 Cette interface permet de valoriser un **Quanto Swap** en intégrant l'ajustement de convexité lié à la corrélation 
 entre les taux d'intérêt étrangers et le taux de change (FX).
 """)
 
-# --- Sidebar : Données de Marché ---
 st.sidebar.header("Données de Marché")
 ois_curve = ZeroCouponCurve.bootstrap_ois_curve(get_mock_ois_quotes(), "EUR-OIS")
 ibor_curve = ZeroCouponCurve(list(get_mock_ibor_quotes().keys()), list(get_mock_ibor_quotes().values()), "USD-LIBOR")
 st.sidebar.success("Courbes OIS et IBOR chargées.")
 
-# --- Layout des Paramètres ---
 st.header("1. Paramètres du Contrat")
 col1, col2, col3 = st.columns(3)
 
@@ -39,7 +36,6 @@ with col3:
     correlation = st.slider("Corrélation (Taux vs FX)", -1.0, 1.0, 0.3)
     freq = st.selectbox("Fréquence de paiement", ["3M", "6M", "1Y"], index=0)
 
-# --- Calculs ---
 st.divider()
 pricer = QuantoSwapPricer(notional, maturity, freq, rate_vol, fx_vol, correlation, ois_curve, ibor_curve)
 
@@ -47,7 +43,6 @@ if st.button("Lancer le Pricing"):
     pv, details = pricer.price()
     df_details = pd.DataFrame(details)
 
-    # --- Section 2 : Résultats Métriques ---
     st.header("2. Résultats du Pricing")
     m1, m2, m3 = st.columns(3)
     m1.metric("Valeur Actuelle (PV)", f"{pv:,.2f} €")
@@ -55,7 +50,6 @@ if st.button("Lancer le Pricing"):
     m2.metric("Ajustement Moyen", f"{avg_adj:.6f}", help="Moyenne des ajustements de convexité sur la durée")
     m3.metric("Impact Corrélation", "Positif" if correlation > 0 else "Négatif")
 
-    # --- Section 3 : Visualisations ---
     st.subheader("Structure Temporelle des Flux Quanto")
     
     fig = go.Figure()
@@ -65,7 +59,6 @@ if st.button("Lancer le Pricing"):
     fig.update_layout(title="Évolution du Taux Ajusté (Quanto) vs Forward", template="plotly_white", xaxis_title="Temps", yaxis_title="Taux")
     st.plotly_chart(fig, use_container_width=True)
 
-    # --- Section 4 : Analyse de Sensibilité ---
     st.header("3. Analyse de Sensibilité")
     st.write("Impact de la corrélation sur la PV totale :")
     
@@ -77,7 +70,6 @@ if st.button("Lancer le Pricing"):
     fig_sensi.add_vline(x=correlation, line_dash="dash", line_color="red", annotation_text="Position Actuelle")
     st.plotly_chart(fig_sensi, use_container_width=True)
 
-    # --- Section 5 : Tableau Détail ---
     with st.expander("Voir le tableau d'amortissement complet"):
         st.dataframe(df_details.style.format({
             "Maturité": "{:.2f}Y",
