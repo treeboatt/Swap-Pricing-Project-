@@ -1,69 +1,86 @@
 import streamlit as st
-import numpy as np
 import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
 
+from pricers.variance_swap_pricer import VarianceSwapPricer
 from core.curves import ZeroCouponCurve
 from core.market_data import get_mock_ois_quotes
 
-st.set_page_config(page_title="Variance Swap", layout="wide")
-st.title("Variance Swap")
+st.set_page_config(page_title="Variance Swap Analysis", layout="wide")
+st.title("📈 Variance Swap - Volatility Trading")
 
 st.markdown("""
-Un **Variance Swap** est un produit dérivé dont le payoff dépend de la différence entre 
-la **variance réalisée** du taux (ou actif) et un niveau fixé à l'avance (le **Variance Strike**).
+Un **Variance Swap** permet de s'exposer directement à la variance réalisée d'un actif. 
+Le payoff est **convexe** : les gains augmentent plus rapidement quand la volatilité monte 
+que les pertes ne s'accumulent quand elle baisse.
 """)
 
-# --- Données de marché ---
-st.header("Données de marché")
-ois_curve = ZeroCouponCurve.bootstrap_ois_curve(get_mock_ois_quotes(), "EUR-OIS")
+# --- Données de Marché ---
+st.sidebar.header("Paramètres de Marché")
+ois_curve = ZeroCouponCurve.bootstrap_ois_curve(get_mock_ois_quotes())
 
-# --- Paramètres du Swap ---
-st.header("Paramètres du Variance Swap")
-col1, col2 = st.columns(2)
+# --- Section 1 : Inputs de l'instrument ---
+st.header("1. Configuration du Swap")
+c1, c2, c3 = st.columns(3)
 
-with col1:
-    notional_vega = st.number_input("Notionnel Vega (Montant par point de vol)", value=50000.0, step=1000.0)
-    strike_vol = st.number_input("Strike Volatilité (en %, ex: 20 pour 20%)", value=20.0, step=0.5) / 100
-    expected_vol = st.number_input("Volatilité réalisée estimée (en %)", value=22.0, step=0.5) / 100
+with c1:
+    n_vega = st.number_input("Notionnel Vega (€ per vol point)", value=50000.0, step=1000.0)
+    mat = st.number_input("Maturité (ans)", value=1.0, step=0.5)
 
-with col2:
-    maturity = st.number_input("Maturité (années)", value=1.0, step=0.5)
-    # Dans un var swap, on regarde souvent la fréquence d'observation (quotidienne par défaut)
-    nb_observations = st.number_input("Nombre d'observations par an", value=252, step=1)
+with c2:
+    k_vol = st.slider("Strike Volatilité (%)", 5.0, 60.0, 20.0) / 100
+    r_vol = st.slider("Volatilité Réalisée Attendue (%)", 5.0, 60.0, 25.0) / 100
 
-# --- Logique de Pricing ---
-st.header("Pricing")
+with c3:
+    st.info(f"**Notionnel Variance :** \n\n {n_vega / (2 * k_vol):,.2f} €")
 
-if st.button("Pricer le Variance Swap"):
-    # 1. Calcul des strikes et variance
-    variance_strike = strike_vol**2
-    realized_variance = expected_vol**2
+# --- Section 2 : Exécution du Pricing ---
+st.divider()
+pricer = VarianceSwapPricer(n_vega, k_vol, r_vol, mat, ois_curve)
+
+if st.button("Lancer l'Analyse de Variance"):
+    final_pv = pricer.calculate_pv()
     
-    # 2. Facteur d'actualisation pour la maturité
-    df = ois_curve.get_discount_factor(maturity)
-    
-    # 3. Calcul du Payoff (Notionnel Variance * (Var_Réalisée - Var_Strike))
-    # Note : Notionnel Variance = Notionnel Vega / (2 * Strike_Vol)
-    notional_variance = notional_vega / (2 * strike_vol)
-    
-    payoff = notional_variance * (realized_variance - variance_strike)
-    pv = payoff * df
+    # Métriques
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Variance Strike (K²)", f"{k_vol**2:.4f}")
+    m2.metric("Variance Réalisée (σ²)", f"{r_vol**2:.4f}")
+    m3.metric("Valeur Actuelle (PV)", f"{final_pv:,.2f} €", delta=f"{(r_vol-k_vol)*100:.2f} pts de vol")
 
-    # --- Affichage ---
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Variance Strike", f"{variance_strike:.4f}")
-    c2.metric("Variance Réalisée", f"{realized_variance:.4f}")
-    c3.metric("Valeur Actuelle (PV)", f"{pv:,.2f} €", delta=f"{payoff:,.2f} à l'échéance")
+    # --- Section 3 : Graphique de Convexité ---
+    st.header("2. Analyse de la Convexité")
+    vols = np.linspace(0.01, 0.70, 100)
+    pvs = [pricer.calculate_pv(v) for v in vols]
+    
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=vols*100, y=pvs, name="Payoff du Swap", line=dict(color='royalblue', width=3)))
+    
+    # Ajout du point mort (Strike)
+    fig.add_vline(x=k_vol*100, line_dash="dash", line_color="red", annotation_text="Strike (Break-even)")
+    # Ajout du point actuel
+    fig.add_trace(go.Scatter(x=[r_vol*100], y=[final_pv], mode="markers", name="Position Actuelle", marker=dict(size=12, color='orange')))
 
-    # --- Graphique de sensibilité ---
-    st.subheader("Sensibilité au changement de Volatilité Réalisée")
-    vols = np.linspace(0.05, 0.40, 50)
-    payoffs = notional_variance * (vols**2 - variance_strike) * df
+    fig.update_layout(title="Profil de Profit/Perte vs Volatilité Réalisée", 
+                      xaxis_title="Volatilité Réalisée (%)", yaxis_title="PV (€)",
+                      template="plotly_white")
+    st.plotly_chart(fig, use_container_width=True)
+
+    # --- Section 4 : Table de Scénarios ---
+    st.header("3. Matrice de Stress-Test")
+    scenarios = np.array([0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50])
+    results = []
     
-    chart_data = pd.DataFrame({
-        "Volatilité Réalisée (%)": vols * 100,
-        "PV du Swap (€)": payoffs
-    }).set_index("Volatilité Réalisée (%)")
+    for s in scenarios:
+        res_pv = pricer.calculate_pv(s)
+        results.append({
+            "Vol Réalisée (%)": f"{s*100:.1f}%",
+            "Variance": f"{s**2:.4f}",
+            "Payoff (€)": res_pv,
+            "Statut": "Profit" if res_pv > 0 else "Perte"
+        })
     
-    st.line_chart(chart_data)
-    st.info("Le payoff d'un Variance Swap est convexe par rapport à la volatilité, contrairement à un Volatility Swap qui est linéaire.")
+    st.table(pd.DataFrame(results))
+    
+    st.caption("Note : Le payoff est calculé en utilisant l'actualisation OIS pour la maturité choisie.")
