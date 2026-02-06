@@ -7,7 +7,7 @@ from pricers.constant_maturity_swap import CMSPricer
 
 st.set_page_config(page_title="CMS Pricing", layout="wide")
 
-st.title("📉 Constant Maturity Swap (CMS) Pricer")
+st.title("Constant Maturity Swap (CMS) Pricer")
 
 #INPUTS
 col1, col2 = st.columns([1, 2])
