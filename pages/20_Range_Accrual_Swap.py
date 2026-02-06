@@ -8,9 +8,7 @@ from core.market_data import get_mock_ois_quotes, get_mock_ibor_quotes
 st.set_page_config(page_title="Range Accrual Swap", layout="wide")
 st.title("Range Accrual Swap")
 
-################################
-# Courbe OIS (discounting)
-################################
+# Courbe OIS
 st.header("Données de marché – Courbe OIS (discounting)")
 
 with st.expander("Quotes OIS"):
@@ -32,9 +30,7 @@ ois_curve = ZeroCouponCurve.bootstrap_ois_curve(
 
 st.success("Courbe OIS construite.")
 
-################################
-# Courbe IBOR (projection)
-################################
+# Courbe IBOR
 st.header("Données de marché – Courbe IBOR (projection)")
 
 with st.expander("Zéros IBOR (proxy)"):
@@ -61,9 +57,7 @@ projection_curve = ZeroCouponCurve(
 
 st.success("Courbe IBOR construite.")
 
-################################
 # Paramètres du swap
-################################
 st.header("Paramètres du Range Accrual Swap")
 
 col1, col2, col3 = st.columns(3)
@@ -88,9 +82,7 @@ with col2:
 with col3:
     upper_bound = st.number_input("Borne haute", value=0.04, step=0.001, format="%.4f")
 
-################################
 # Paramètres Hull–White
-################################
 st.header("Modèle de taux – Hull–White (1 facteur)")
 
 col1, col2, col3 = st.columns(3)
@@ -119,9 +111,7 @@ with col3:
     )
 
 
-################################
 # Pricing
-################################
 st.header("Pricing")
 
 if st.button("Pricer le Range Accrual Swap"):
@@ -152,3 +142,4 @@ if st.button("Pricer le Range Accrual Swap"):
         "Pricing basé sur une jambe range accrual, "
         "taux forward IBOR projetés, actualisation OIS."
     )
+
