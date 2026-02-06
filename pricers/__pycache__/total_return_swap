@@ -1,0 +1,29 @@
+import numpy as np
+
+class TotalReturnSwapPricer:
+    def __init__(self, notional, start_price, current_price, spread, frequency, maturity, discount_curve, projection_curve):
+        self.notional = notional
+        self.start_price = start_price
+        self.current_price = current_price
+        self.spread = spread
+        self.maturity = maturity
+        self.n_payments = {"3M": 4, "6M": 2, "1Y": 1}[frequency]
+        self.discount_curve = discount_curve
+        self.projection_curve = projection_curve
+
+    def calculate_pv(self, simulated_price=None):
+        price_to_use = simulated_price if simulated_price is not None else self.current_price
+        
+        asset_performance = (price_to_use - self.start_price) / self.start_price
+        asset_leg = self.notional * asset_performance
+        
+        times = np.linspace(1/self.n_payments, self.maturity, int(self.maturity * self.n_payments))
+        funding_leg = 0
+        
+        for t in times:
+            df = self.discount_curve.get_discount_factor(t)
+            fwd = self.projection_curve.get_forward_rate(max(0, t - 1/self.n_payments), t)
+            flow = self.notional * (fwd + self.spread) * (1/self.n_payments)
+            funding_leg += flow * df
+            
+        return asset_leg - funding_leg, asset_leg, funding_leg
