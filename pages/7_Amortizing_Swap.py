@@ -14,7 +14,7 @@ Un **Amortizing Swap** est un swap où le notionnel décroît selon un calendrie
 Utile pour couvrir des prêts/emprunts en remboursement progressif.
 """)
 
-# ====== Courbe OIS ======
+# Courbe OIS
 st.header("Données de marché (courbe d'actualisation OIS)")
 
 with st.expander("Voir les quotes OIS (en dur)"):
@@ -141,9 +141,9 @@ if st.button("Pricer l'Amortizing Swap", type="primary"):
         
         # Afficher si le swap est avantageux
         if abs(price) < 1:
-            st.success("✅ Swap quasi-équilibré")
+            st.success("Swap quasi-équilibré")
         elif price > 0:
-            st.info(f"📈 Swap avantageux pour le payeur fixe (+{price:,.2f})")
+            st.info(f"Swap avantageux pour le payeur fixe (+{price:,.2f})")
         
         # Détail des flux
         st.subheader("Détail des flux")
