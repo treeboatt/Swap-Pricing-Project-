@@ -1,1 +1,20 @@
+# Python
+__pycache__/
+*.pyc
 
+# Environnements virtuels
+.venv/
+venv/
+env/
+
+# Streamlit
+.streamlit/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
