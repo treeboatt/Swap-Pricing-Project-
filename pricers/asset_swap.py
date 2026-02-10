@@ -26,11 +26,6 @@ class AssetSwapPricer:
         self.times = np.arange(self.dt, self.maturity + 0.001, self.dt)
 
     def calculate_spread(self):
-        """
-        ### EXPLI : RESOLUTION DE L'EQUATION
-        On cherche S tel que : PV_Swap = 100% - Prix_Obligation
-        Soit : (JambeVariable + S * PV01) - JambeFixe = 1 - P_mkt
-        """
         pv_fix_leg = 0.0
         pv_float_clean = 0.0 
         pv_01 = 0.0          
